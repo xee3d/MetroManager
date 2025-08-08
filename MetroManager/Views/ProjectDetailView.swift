@@ -54,6 +54,14 @@ struct ProjectDetailView: View {
                         Label("터미널", systemImage: "terminal")
                     }
                     .buttonStyle(.bordered)
+                    
+                    Button(action: {
+                        openInXcode(path: project.path)
+                    }) {
+                        Label("Xcode", systemImage: "hammer")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.blue)
                 }
             }
             .padding()
@@ -239,6 +247,49 @@ struct ProjectDetailView: View {
                 .foregroundColor(.red)
                 .padding([.horizontal, .bottom])
                 .textSelection(.enabled)
+        }
+    }
+    
+    private func openInXcode(path: String) {
+        guard FileManager.default.fileExists(atPath: path) else {
+            metroManager.errorMessage = "유효하지 않은 경로입니다: \(path)"
+            metroManager.showingErrorAlert = true
+            return
+        }
+        
+        // Xcode 프로젝트 파일 찾기
+        let xcodeProjectExtensions = [".xcodeproj", ".xcworkspace"]
+        var xcodeProjectPath: String?
+        
+        for ext in xcodeProjectExtensions {
+            let projectPath = "\(path)/\(URL(fileURLWithPath: path).lastPathComponent)\(ext)"
+            if FileManager.default.fileExists(atPath: projectPath) {
+                xcodeProjectPath = projectPath
+                break
+            }
+        }
+        
+        // Xcode 프로젝트가 없으면 폴더 자체를 열기
+        let targetPath = xcodeProjectPath ?? path
+        let targetURL = URL(fileURLWithPath: targetPath)
+        
+        // Xcode로 열기
+        let xcodeURL = URL(fileURLWithPath: "/Applications/Xcode.app")
+        
+        NSWorkspace.shared.open([targetURL], 
+                                withApplicationAt: xcodeURL, 
+                                configuration: NSWorkspace.OpenConfiguration()) { _, error in
+            if let error = error {
+                DispatchQueue.main.async {
+                    self.metroManager.errorMessage = "Xcode 열기 오류: \(error.localizedDescription)"
+                    self.metroManager.showingErrorAlert = true
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self.metroManager.errorMessage = "Xcode에서 프로젝트를 열었습니다: \(URL(fileURLWithPath: targetPath).lastPathComponent)"
+                    self.metroManager.showingErrorAlert = true
+                }
+            }
         }
     }
     
