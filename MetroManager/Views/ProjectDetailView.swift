@@ -58,7 +58,7 @@ struct ProjectDetailView: View {
                     Button(action: {
                         openInXcode(path: project.path)
                     }) {
-                        Label("Xcode", systemImage: "hammer")
+                        Label("Xcode", systemImage: "play.square")
                     }
                     .buttonStyle(.bordered)
                     .tint(.blue)
@@ -300,42 +300,20 @@ struct ProjectDetailView: View {
             return
         }
         
-        // AppleScript를 사용해서 기존 터미널 창에 명령어 전송
-        let script = """
-        tell application "Terminal"
-            if (count of windows) > 0 then
-                -- 기존 터미널 창이 있으면 새 탭 생성
-                tell application "System Events" to tell process "Terminal" to keystroke "t" using command down
-                delay 0.5
-                -- 새 탭에서 프로젝트 디렉토리로 이동
-                do script "cd '\(path)'" in selected tab of front window
-            else
-                -- 터미널 창이 없으면 새 창 생성
-                do script "cd '\(path)'"
-            end if
-            activate
-        end tell
-        """
+        // 간단하고 안정적인 방법으로 터미널 열기
+        let pathURL = URL(fileURLWithPath: path)
+        let terminalURL = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
         
-        let task = Process()
-        task.launchPath = "/usr/bin/osascript"
-        task.arguments = ["-e", script]
-        
-        do {
-            try task.run()
-        } catch {
-            // AppleScript 실패 시 기존 방식으로 폴백
-            let pathURL = URL(fileURLWithPath: path)
-            let terminalURL = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
-            
-            NSWorkspace.shared.open([pathURL], 
-                                    withApplicationAt: terminalURL, 
-                                    configuration: NSWorkspace.OpenConfiguration()) { _, error in
+        NSWorkspace.shared.open([pathURL], 
+                                withApplicationAt: terminalURL, 
+                                configuration: NSWorkspace.OpenConfiguration()) { _, error in
+            DispatchQueue.main.async {
                 if let error = error {
-                    DispatchQueue.main.async {
-                        self.metroManager.errorMessage = "터미널 열기 오류: \(error.localizedDescription)"
-                        self.metroManager.showingErrorAlert = true
-                    }
+                    self.metroManager.errorMessage = "터미널 열기 오류: \(error.localizedDescription)"
+                    self.metroManager.showingErrorAlert = true
+                } else {
+                    self.metroManager.errorMessage = "터미널에서 프로젝트를 열었습니다: \(pathURL.lastPathComponent)"
+                    self.metroManager.showingErrorAlert = true
                 }
             }
         }
