@@ -138,6 +138,6 @@ Bug reports and feature suggestions welcome!
 
 ---
 
-**MetroManager v1.2.0** - Making React Native development more convenient! 🚀
+**MetroManager v0.7** - Making React Native development more convenient! 🚀
 
 *Enhanced Expo project detection accuracy, expanded shortcut functionality, user-defined project type persistence, and stop all servers feature have been added.*
