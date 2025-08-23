@@ -55,6 +55,28 @@ A native macOS app for managing React Native/Expo Metro servers.
 open MetroManager-Release.app
 ```
 
+### 🔒 **Security Note - If app won't open due to macOS security:**
+
+**Method 1: System Preferences**
+1. Go to **Apple Menu** → **System Preferences** → **Security & Privacy**
+2. Click **"Open Anyway"** button
+3. Move MetroManager.app to Applications folder
+4. Run the app
+
+**Method 2: Right-click to open**
+1. Right-click on MetroManager.app in Finder
+2. Select **"Open"**
+3. Click **"Open"** in the warning dialog
+
+**Method 3: Terminal (Advanced users)**
+```bash
+# Remove quarantine attribute
+xattr -cr /Applications/MetroManager.app
+
+# Or disable Gatekeeper temporarily
+sudo spctl --master-disable
+```
+
 ### 🔧 **Development Build**
 ```bash
 # Clone the project
