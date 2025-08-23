@@ -12,6 +12,35 @@ enum ProjectType: String, CaseIterable {
     }
 }
 
+enum LogType {
+    case info
+    case success
+    case warning
+    case error
+    
+    var color: Color {
+        switch self {
+        case .info: return .primary
+        case .success: return .green
+        case .warning: return .orange
+        case .error: return .red
+        }
+    }
+}
+
+struct LogEntry: Identifiable {
+    let id = UUID()
+    let message: String
+    let type: LogType
+    let timestamp: Date
+    
+    init(_ message: String, type: LogType = .info) {
+        self.message = message
+        self.type = type
+        self.timestamp = Date()
+    }
+}
+
 class MetroProject: ObservableObject, Identifiable, Hashable {
     static func == (lhs: MetroProject, rhs: MetroProject) -> Bool {
         lhs.id == rhs.id
@@ -26,13 +55,14 @@ class MetroProject: ObservableObject, Identifiable, Hashable {
     @Published var port: Int
     @Published var projectType: ProjectType = .expo
     @Published var isRunning: Bool = false
-    @Published var logs: [String] = []
+    @Published var logs: [LogEntry] = []
     @Published var status: MetroStatus = .stopped
     @Published var retryCount: Int = 0
     @Published var shouldRetry: Bool = true
     @Published var isExternalProcess: Bool = false
     @Published var externalProcessId: Int? = nil
     @Published var lastStatusCheck: Date = Date()
+    @Published var isInteractiveMode: Bool = true  // 대화형 모드 기본 활성화
     
     var process: Process?
     
@@ -66,5 +96,34 @@ class MetroProject: ObservableObject, Identifiable, Hashable {
         self.path = path
         self.port = port
         self.projectType = projectType
+    }
+    
+    // 편의 메서드들
+    func addLog(_ message: String, type: LogType = .info) {
+        DispatchQueue.main.async {
+            self.logs.append(LogEntry(message, type: type))
+        }
+    }
+    
+    func addInfoLog(_ message: String) {
+        addLog(message, type: .info)
+    }
+    
+    func addSuccessLog(_ message: String) {
+        addLog(message, type: .success)
+    }
+    
+    func addWarningLog(_ message: String) {
+        addLog(message, type: .warning)
+    }
+    
+    func addErrorLog(_ message: String) {
+        addLog(message, type: .error)
+    }
+    
+    func clearLogs() {
+        DispatchQueue.main.async {
+            self.logs.removeAll()
+        }
     }
 }

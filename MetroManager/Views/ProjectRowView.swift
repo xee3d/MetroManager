@@ -16,8 +16,8 @@ struct ProjectRowView: View {
         let project = previewMetroManager.projects[0]
         project.status = .running
         project.isRunning = true
-        project.logs.append("Sample log line 1")
-        project.logs.append("Sample log line 2")
+        project.addInfoLog("Sample log line 1")
+        project.addInfoLog("Sample log line 2")
         return project
     }()
 
@@ -42,15 +42,23 @@ struct ProjectRowView: View {
                         .font(.title3)
                         .fontWeight(.medium)
                     
-                    // 프로젝트 타입 표시
-                    Text(project.projectType.rawValue)
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(project.projectType == .expo ? Color.blue.opacity(0.2) : Color.orange.opacity(0.2))
-                        .foregroundColor(project.projectType == .expo ? .blue : .orange)
-                        .cornerRadius(4)
+                    // 프로젝트 타입 표시 (클릭 가능)
+                    Button(action: {
+                        // 프로젝트 타입 토글
+                        let newType: ProjectType = project.projectType == .expo ? .reactNativeCLI : .expo
+                        metroManager.updateProjectType(for: project, to: newType)
+                    }) {
+                        Text(project.projectType.rawValue)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(project.projectType == .expo ? Color.blue.opacity(0.2) : Color.orange.opacity(0.2))
+                            .foregroundColor(project.projectType == .expo ? .blue : .orange)
+                            .cornerRadius(4)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .help("클릭하여 프로젝트 타입 변경 (Expo ↔ React Native CLI)")
                     
                     // 외부 프로세스 표시
                     if project.isExternalProcess {

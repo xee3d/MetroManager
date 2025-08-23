@@ -1,7 +1,21 @@
 {
   "permissions": {
     "allow": [
-      "Bash(xcodebuild:*)"
+      "Bash(xcodebuild:*)",
+      "Bash(npm i:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(rm:*)",
+      "Bash(npm cache clean:*)",
+      "Bash(claude doctor)",
+      "Bash(sudo rm:*)",
+      "Bash(claude --version)",
+      "Bash(npx:*)",
+      "Bash(cp:*)",
+      "Bash(chmod:*)",
+      "Bash(swift:*)",
+      "Bash(ls:*)",
+      "Bash(pkill:*)",
+      "Bash(kill:*)"
     ],
     "deny": []
   }
