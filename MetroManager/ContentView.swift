@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import AppKit
 
 // MARK: - Main View
 struct ContentView: View {
@@ -37,13 +38,13 @@ struct ContentView: View {
                     }
                     .help("죽은 외부 프로세스 정리")
                     Button(action: { 
-                        metroManager.stopAllMetroServers()
+                        metroManager.stopAllMetroServersAndClear()
                     }) {
                         Image(systemName: "stop.circle.fill")
                             .font(.title3)
                             .foregroundColor(.red)
                     }
-                    .help("전체 Metro 서버 종료")
+                    .help("모든 Metro 서버 종료 및 리스트 정리")
                     Button(action: { showingAddProject = true }) {
                         Image(systemName: "plus")
                             .font(.title3)
@@ -127,7 +128,80 @@ struct ContentView: View {
                 }
             )
         }
+        .onAppear {
+            setupKeyboardMonitoring()
+        }
     }
+    
+    // MARK: - 키보드 단축키 처리
+    private func setupKeyboardMonitoring() {
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            return self.handleKeyEvent(event)
+        }
+    }
+    
+    private func handleKeyEvent(_ event: NSEvent) -> NSEvent? {
+        guard let selectedProject = metroManager.selectedProject,
+              selectedProject.isRunning else {
+            return event
+        }
+        
+        let key = event.charactersIgnoringModifiers?.lowercased()
+        
+        switch key {
+        case "r":
+            metroManager.handleUserCommand("r", for: selectedProject)
+            return nil // 이벤트 소비
+        case "i":
+            metroManager.handleUserCommand("i", for: selectedProject)
+            return nil
+        case "a":
+            metroManager.handleUserCommand("a", for: selectedProject)
+            return nil
+        case "d":
+            metroManager.handleUserCommand("d", for: selectedProject)
+            return nil
+        case "j":
+            metroManager.handleUserCommand("j", for: selectedProject)
+            return nil
+        case "m":
+            metroManager.handleUserCommand("m", for: selectedProject)
+            return nil
+        case "w" where selectedProject.projectType == .expo:
+            metroManager.handleUserCommand("w", for: selectedProject)
+            return nil
+        case "c" where selectedProject.projectType == .expo:
+            metroManager.handleUserCommand("c", for: selectedProject)
+            return nil
+        case "s" where selectedProject.projectType == .expo:
+            metroManager.handleUserCommand("s", for: selectedProject)
+            return nil
+        case "t" where selectedProject.projectType == .expo:
+            metroManager.handleUserCommand("t", for: selectedProject)
+            return nil
+        case "l" where selectedProject.projectType == .expo:
+            metroManager.handleUserCommand("l", for: selectedProject)
+            return nil
+        case "o" where selectedProject.projectType == .expo:
+            metroManager.handleUserCommand("o", for: selectedProject)
+            return nil
+        case "u" where selectedProject.projectType == .expo:
+            metroManager.handleUserCommand("u", for: selectedProject)
+            return nil
+        case "h" where selectedProject.projectType == .expo:
+            metroManager.handleUserCommand("h", for: selectedProject)
+            return nil
+        case "v" where selectedProject.projectType == .expo:
+            metroManager.handleUserCommand("v", for: selectedProject)
+            return nil
+        case "q" where selectedProject.projectType == .expo:
+            metroManager.handleUserCommand("q", for: selectedProject)
+            return nil
+        default:
+            return event // 이벤트 전달
+        }
+    }
+    
     private var displayedProjects: [MetroProject] {
         // 동일 포트 중복 제거: 실행 중 내부 프로세스 우선, 다음은 경로가 알려진 외부 프로세스
         var result: [MetroProject] = []

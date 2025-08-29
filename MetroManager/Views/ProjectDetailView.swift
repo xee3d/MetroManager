@@ -458,6 +458,9 @@ struct ProjectDetailView: View {
             
             Spacer()
         }
+        .onAppear {
+            setupKeyboardMonitoring()
+        }
         
         if let errorMessage = metroManager.errorMessage, metroManager.showingErrorAlert == false {
             Text("오류: \(errorMessage)")
@@ -465,6 +468,74 @@ struct ProjectDetailView: View {
                 .foregroundColor(.red)
                 .padding([.horizontal, .bottom])
                 .textSelection(.enabled)
+        }
+    }
+    
+    // MARK: - 키보드 단축키 처리
+    private func setupKeyboardMonitoring() {
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            return self.handleKeyEvent(event)
+        }
+    }
+    
+    private func handleKeyEvent(_ event: NSEvent) -> NSEvent? {
+        guard project.isRunning else {
+            return event
+        }
+        
+        let key = event.charactersIgnoringModifiers?.lowercased()
+        
+        switch key {
+        case "r":
+            metroManager.handleUserCommand("r", for: project)
+            return nil // 이벤트 소비
+        case "i":
+            metroManager.handleUserCommand("i", for: project)
+            return nil
+        case "a":
+            metroManager.handleUserCommand("a", for: project)
+            return nil
+        case "d":
+            metroManager.handleUserCommand("d", for: project)
+            return nil
+        case "j":
+            metroManager.handleUserCommand("j", for: project)
+            return nil
+        case "m":
+            metroManager.handleUserCommand("m", for: project)
+            return nil
+        case "w" where project.projectType == .expo:
+            metroManager.handleUserCommand("w", for: project)
+            return nil
+        case "c" where project.projectType == .expo:
+            metroManager.handleUserCommand("c", for: project)
+            return nil
+        case "s" where project.projectType == .expo:
+            metroManager.handleUserCommand("s", for: project)
+            return nil
+        case "t" where project.projectType == .expo:
+            metroManager.handleUserCommand("t", for: project)
+            return nil
+        case "l" where project.projectType == .expo:
+            metroManager.handleUserCommand("l", for: project)
+            return nil
+        case "o" where project.projectType == .expo:
+            metroManager.handleUserCommand("o", for: project)
+            return nil
+        case "u" where project.projectType == .expo:
+            metroManager.handleUserCommand("u", for: project)
+            return nil
+        case "h" where project.projectType == .expo:
+            metroManager.handleUserCommand("h", for: project)
+            return nil
+        case "v" where project.projectType == .expo:
+            metroManager.handleUserCommand("v", for: project)
+            return nil
+        case "q" where project.projectType == .expo:
+            metroManager.handleUserCommand("q", for: project)
+            return nil
+        default:
+            return event // 이벤트 전달
         }
     }
     

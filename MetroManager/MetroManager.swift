@@ -117,8 +117,6 @@ class MetroManager: ObservableObject {
     }
     
     func addProject(name: String, path: String) {
-        let availablePort = findAvailablePort()
-        
         // 사용자 설정 우선 확인
         let projectType: ProjectType
         if let userProjectType = getUserProjectType(path: path) {
@@ -129,7 +127,8 @@ class MetroManager: ObservableObject {
             Logger.debug("자동 감지 프로젝트 타입: \(name) -> \(projectType.rawValue)")
         }
         
-        let project = MetroProject(name: name, path: path, port: availablePort, projectType: projectType)
+        // 기본 포트 8081로 시작 (자동 포트 할당 제거)
+        let project = MetroProject(name: name, path: path, port: 8081, projectType: projectType)
         
         // 프로젝트 타입 로깅
         Logger.debug("프로젝트 추가 - \(name) (\(path)) 타입: \(projectType.rawValue)")
@@ -188,15 +187,17 @@ class MetroManager: ObservableObject {
             return
         }
         
-        // 포트가 사용 중인지 확인하고 사용 가능한 포트로 변경
+        // 포트가 사용 중인지 확인 (자동 변경 안함)
         if !isPortAvailable(project.port) {
-            let newPort = findAvailablePort()
-            project.addWarningLog("포트 \(project.port)가 사용 중이므로 포트 \(newPort)로 변경합니다.")
-            project.port = newPort
-        } else {
-            // 포트가 사용 가능한 경우 재시도 횟수 리셋
-            project.retryCount = 0
+            project.status = .error
+            project.addErrorLog("포트 \(project.port)가 이미 사용 중입니다. 다른 포트로 변경하거나 해당 포트를 사용하는 프로세스를 중지해주세요.")
+            self.errorMessage = "포트 \(project.port)가 이미 사용 중입니다. 프로젝트 설정에서 다른 포트로 변경해주세요."
+            self.showingErrorAlert = true
+            return
         }
+        
+        // 포트가 사용 가능한 경우 재시도 횟수 리셋
+        project.retryCount = 0
         
         project.status = .starting
         project.clearLogs()
@@ -297,36 +298,15 @@ class MetroManager: ObservableObject {
                         project?.shouldRetry = false
                     }
                     
-                    // 포트 사용 중 오류 감지 (무한 루프 방지)
+                    // 포트 사용 중 오류 감지 (자동 재시도 제거)
                     if lowerOutput.contains("eaddrinuse") || 
                        (lowerOutput.contains("port") && lowerOutput.contains("use") && 
                         !lowerOutput.contains("waiting on http://localhost") && 
                         !lowerOutput.contains("metro is running")) {
                         
-                        // 이미 성공했거나 재시도하지 않아야 하는 경우 무시
-                        guard project?.shouldRetry == true else {
-                            project?.addInfoLog("Metro가 이미 성공적으로 시작되었으므로 재시도하지 않습니다.")
-                            return
-                        }
-                        
-                        project?.addWarningLog("포트 \(project?.port ?? 0)가 이미 사용 중입니다.")
-                        
-                        // 재시도 횟수 제한
-                        if project?.retryCount ?? 0 < 3 {
-                            project?.retryCount = (project?.retryCount ?? 0) + 1
-                            project?.addInfoLog("재시도 \(project?.retryCount ?? 0)/3: 다른 포트를 시도합니다.")
-                            
-                            // 다른 포트로 재시도
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                if let project = project, project.shouldRetry {
-                                    self?.retryWithDifferentPort(for: project)
-                                }
-                            }
-                        } else {
-                            project?.status = .error
-                            project?.shouldRetry = false
-                            project?.addErrorLog("최대 재시도 횟수(3회)를 초과했습니다. 수동으로 포트를 변경해주세요.")
-                        }
+                        project?.status = .error
+                        project?.shouldRetry = false
+                        project?.addErrorLog("포트 \(project?.port ?? 0)가 이미 사용 중입니다. 프로젝트 설정에서 다른 포트로 변경해주세요.")
                     }
                     
                     // Expo 특정 오류 감지
@@ -463,6 +443,66 @@ class MetroManager: ObservableObject {
         }
         
         Logger.debug("전체 Metro 서버 종료 완료")
+        
+        // 프로젝트 상태 업데이트 및 저장
+        DispatchQueue.main.async {
+            self.saveProjects()
+        }
+    }
+    
+    func forceKillAllMetroProcesses() {
+        Logger.debug("모든 Metro 프로세스 강제 종료 시작")
+        
+        // 먼저 일반 종료 시도
+        stopAllMetroServers()
+        
+        // 모든 Metro 관련 프로세스를 강제로 찾아서 종료
+        let task = Process()
+        task.launchPath = "/bin/bash"
+        task.arguments = ["-c", "pkill -f 'metro\\|expo.*start\\|react-native.*start' || true"]
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            Logger.success("모든 Metro 관련 프로세스 강제 종료 완료")
+        } catch {
+            Logger.error("Metro 프로세스 강제 종료 실패: \(error.localizedDescription)")
+        }
+        
+        // 모든 프로젝트 상태를 중지로 업데이트
+        DispatchQueue.main.async {
+            for project in self.projects {
+                project.isRunning = false
+                project.status = .stopped
+                project.process = nil
+                project.isExternalProcess = false
+                project.externalProcessId = nil
+                project.addInfoLog("🔴 강제 종료됨")
+            }
+            self.saveProjects()
+            
+            // 성공 메시지 표시
+            self.errorMessage = "모든 Metro 프로세스가 강제 종료되었습니다."
+            self.showingErrorAlert = true
+        }
+    }
+    
+    func stopAllMetroServersAndClear() {
+        Logger.debug("모든 Metro 서버 종료 및 리스트 정리 시작")
+        
+        // 먼저 모든 Metro 프로세스 강제 종료
+        forceKillAllMetroProcesses()
+        
+        // 약간의 지연 후 모든 프로젝트 제거
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.projects.removeAll()
+            self.selectedProject = nil
+            self.saveProjects()
+            
+            Logger.success("모든 프로젝트가 리스트에서 제거되었습니다.")
+            self.errorMessage = "모든 Metro 서버가 종료되고 프로젝트 리스트가 정리되었습니다."
+            self.showingErrorAlert = true
+        }
     }
     
     func clearLogs(for project: MetroProject) {
@@ -855,23 +895,7 @@ class MetroManager: ObservableObject {
         }
     }
     
-    private func retryWithDifferentPort(for project: MetroProject) {
-        // 현재 프로세스 중지
-        if let process = project.process {
-            process.terminate()
-            project.process = nil
-        }
-        
-        // 새로운 포트 찾기
-        let newPort = findAvailablePort()
-        project.port = newPort
-        project.addInfoLog("새로운 포트 \(newPort)로 Metro를 시작합니다.")
-        
-        // 잠시 후 다시 시작
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            self.startMetro(for: project)
-        }
-    }
+    
     
     private func findAvailablePort() -> Int {
         let usedPorts = Set(projects.map { $0.port })
