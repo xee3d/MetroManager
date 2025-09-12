@@ -23,10 +23,10 @@ struct ProjectDetailView: View {
             }
             .padding(.horizontal)
             
-            // 제어 패널 - 그룹별로 정리
-            VStack(spacing: 12) {
+            // 제어 패널 - 세밀하게 조정된 간격과 사이즈
+            VStack(spacing: 8) {
                 // 기본 제어 버튼들
-                HStack(spacing: 12) {
+                HStack(spacing: 8) {
                     Button(action: {
                         if project.isRunning {
                             if project.isExternalProcess {
@@ -50,6 +50,7 @@ struct ProjectDetailView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(project.isRunning ? .red : .green)
+                    .controlSize(.regular)
                     .disabled(project.status == .starting)
                     .help(project.isRunning ? 
                           (project.isExternalProcess ? "외부 프로세스를 중지합니다" : "Metro를 중지합니다") :
@@ -69,6 +70,7 @@ struct ProjectDetailView: View {
                         }
                         .buttonStyle(.bordered)
                         .tint(.purple)
+                        .controlSize(.small)
                     }
                     
                     Button(action: {
@@ -77,13 +79,15 @@ struct ProjectDetailView: View {
                         Label("터미널", systemImage: "terminal")
                     }
                     .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
                 
-                // 로그 관리 버튼들
-                HStack(spacing: 8) {
-                    Text("로그 관리:")
-                        .font(.caption)
+                // 로그 관리 버튼들 - 더 컴팩트하게
+                HStack(spacing: 6) {
+                    Text("로그:")
+                        .font(.caption2)
                         .foregroundColor(.secondary)
+                        .fontWeight(.medium)
                     
                     Button(action: {
                         metroManager.clearLogs(for: project)
@@ -91,7 +95,7 @@ struct ProjectDetailView: View {
                         Label("삭제", systemImage: "trash")
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .controlSize(.mini)
                     
                     Button(action: {
                         project.forceLogCleanup()
@@ -100,7 +104,7 @@ struct ProjectDetailView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(.orange)
-                    .controlSize(.small)
+                    .controlSize(.mini)
                     .help("오래된 로그만 정리 (에러 로그 보존)")
                     
                     Button(action: {
@@ -110,11 +114,11 @@ struct ProjectDetailView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(.blue)
-                    .controlSize(.small)
+                    .controlSize(.mini)
                     .help("중복 로그 압축")
                 }
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 12)
             
             // 자동 해결 도구 및 실행 버튼 제거됨
             
@@ -225,105 +229,93 @@ struct ProjectDetailView: View {
             
             Divider()
             
-            // 핵심 단축키 - 컴팩트하게 정리
+            // 핵심 단축키 - 세밀하게 조정된 버튼 사이즈
             if project.isRunning {
-                VStack(spacing: 8) {
+                VStack(spacing: 6) {
                     HStack {
                         Text("핵심 단축키")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.caption)
+                            .fontWeight(.semibold)
                             .foregroundColor(.secondary)
                         
                         Spacer()
                         
-                        Text("💡 더 많은 단축키는 키보드로 입력")
+                        Text("💡 키보드로 더 많은 단축키 사용")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, 12)
                     
-                    // 기본 단축키들 - 한 줄로 정리
+                    // 기본 단축키들 - 아이콘과 텍스트로 명확하게
                     HStack(spacing: 6) {
                         Button(action: {
                             metroManager.handleUserCommand("r", for: project)
                         }) {
-                            Text("r")
-                                .font(.caption)
-                                .fontWeight(.medium)
+                            Label("리로드", systemImage: "arrow.clockwise")
                         }
                         .buttonStyle(.bordered)
                         .tint(.blue)
                         .controlSize(.small)
-                        .help("리로드")
+                        .help("리로드 (r)")
                         
                         Button(action: {
                             metroManager.handleUserCommand("i", for: project)
                         }) {
-                            Text("i")
-                                .font(.caption)
-                                .fontWeight(.medium)
+                            Label("iOS", systemImage: "iphone")
                         }
                         .buttonStyle(.bordered)
                         .tint(.blue)
                         .controlSize(.small)
-                        .help("iOS 시뮬레이터")
+                        .help("iOS 시뮬레이터 (i)")
                         
                         Button(action: {
                             metroManager.handleUserCommand("a", for: project)
                         }) {
-                            Text("a")
-                                .font(.caption)
-                                .fontWeight(.medium)
+                            Label("Android", systemImage: "smartphone")
                         }
                         .buttonStyle(.bordered)
                         .tint(.green)
                         .controlSize(.small)
-                        .help("Android 에뮬레이터")
+                        .help("Android 에뮬레이터 (a)")
                         
                         Button(action: {
                             metroManager.handleUserCommand("d", for: project)
                         }) {
-                            Text("d")
-                                .font(.caption)
-                                .fontWeight(.medium)
+                            Label("개발자", systemImage: "gearshape")
                         }
                         .buttonStyle(.bordered)
                         .tint(.orange)
                         .controlSize(.small)
-                        .help("개발자 메뉴")
+                        .help("개발자 메뉴 (d)")
                         
                         // Expo 전용 단축키
                         if project.projectType == .expo {
                             Button(action: {
                                 metroManager.handleUserCommand("w", for: project)
                             }) {
-                                Text("w")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
+                                Label("웹", systemImage: "globe")
                             }
                             .buttonStyle(.bordered)
                             .tint(.blue)
                             .controlSize(.small)
-                            .help("웹")
+                            .help("웹 (w)")
                             
                             Button(action: {
                                 metroManager.handleUserCommand("c", for: project)
                             }) {
-                                Text("c")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
+                                Label("캐시", systemImage: "trash")
                             }
                             .buttonStyle(.bordered)
                             .tint(.red)
                             .controlSize(.small)
-                            .help("캐시 정리")
+                            .help("캐시 정리 (c)")
                         }
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, 12)
                 }
-                .padding(.vertical, 6)
+                .padding(.vertical, 4)
                 .background(Color.gray.opacity(0.05))
-                .cornerRadius(6)
+                .cornerRadius(4)
                 .padding(.horizontal)
             }
             
