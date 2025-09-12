@@ -98,6 +98,11 @@ class MetroManager: ObservableObject {
     @Published var autoAddExternalProcesses: Bool = true
     @Published var hideDuplicatePorts: Bool = true
     // 콘솔 글씨 크기 설정 제거: 기본 시스템 단축키 사용
+    
+    // 로그 메모리 모니터링
+    @Published var totalLogMemoryUsageMB: Double = 0.0
+    @Published var showingMemoryWarning: Bool = false
+    private var memoryMonitoringTimer: Timer?
     // 외부 로그 스트림 작업 저장 (실험적)
     private var externalLogTasks: [UUID: Process] = [:]
     
@@ -114,6 +119,8 @@ class MetroManager: ObservableObject {
         detectRunningMetroProcesses()
         // 백그라운드 실시간 감지 시작
         startBackgroundProcessMonitoring()
+        // 로그 메모리 모니터링 시작
+        startMemoryMonitoring()
     }
     
     func addProject(name: String, path: String) {
@@ -187,18 +194,42 @@ class MetroManager: ObservableObject {
             return
         }
         
-        // 포트가 사용 중인지 확인 (자동 변경 안함)
+        // 포트가 사용 중인지 확인하고 자동으로 해결 시도
         if !isPortAvailable(project.port) {
-            project.status = .error
-            project.addErrorLog("포트 \(project.port)가 이미 사용 중입니다. 다른 포트로 변경하거나 해당 포트를 사용하는 프로세스를 중지해주세요.")
-            self.errorMessage = "포트 \(project.port)가 이미 사용 중입니다. 프로젝트 설정에서 다른 포트로 변경해주세요."
-            self.showingErrorAlert = true
-            return
+            project.addInfoLog("⚠️ 포트 \(project.port)가 사용 중입니다. 자동 해결을 시도합니다...")
+            
+            // 자동으로 포트를 사용하는 프로세스 종료 시도
+            if forceReleasePort(project.port) {
+                // 잠시 대기 후 포트 사용 가능 여부 재확인
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    if self.isPortAvailable(project.port) {
+                        project.addInfoLog("✅ 포트 \(project.port) 자동 해제 완료. Metro를 시작합니다.")
+                        self.continueStartMetro(for: project)
+                    } else {
+                        project.status = .error
+                        project.addErrorLog("❌ 포트 \(project.port) 자동 해제 실패. 수동으로 해결해주세요.")
+                        self.errorMessage = "포트 \(project.port) 자동 해제에 실패했습니다. 수동으로 해당 포트를 사용하는 프로세스를 종료해주세요."
+                        self.showingErrorAlert = true
+                    }
+                }
+                return
+            } else {
+                project.status = .error
+                project.addErrorLog("❌ 포트 \(project.port) 자동 해제 실패. 수동으로 해결해주세요.")
+                self.errorMessage = "포트 \(project.port)가 이미 사용 중입니다. 수동으로 해당 포트를 사용하는 프로세스를 종료해주세요."
+                self.showingErrorAlert = true
+                return
+            }
         }
         
         // 포트가 사용 가능한 경우 재시도 횟수 리셋
         project.retryCount = 0
         
+        continueStartMetro(for: project)
+    }
+    
+    /// Metro 시작을 계속하는 함수 (포트 해제 후 호출)
+    private func continueStartMetro(for project: MetroProject) {
         project.status = .starting
         project.clearLogs()
         
@@ -383,11 +414,15 @@ class MetroManager: ObservableObject {
     func stopMetro(for project: MetroProject) {
         guard project.isRunning, let process = project.process else { return }
         
+        let port = project.port
         process.terminate()
         project.isRunning = false
         project.status = .stopped
         project.process = nil
         project.addInfoLog("Metro 중지됨")
+        
+        // 동일한 포트를 사용하는 대기 중인 프로젝트가 있는지 확인하고 자동 시작
+        checkAndStartWaitingProject(for: port)
     }
     
     func stopAllMetroServers() {
@@ -943,6 +978,144 @@ class MetroManager: ObservableObject {
         return result == 0
     }
     
+    /// 포트를 사용하는 프로세스의 PID들을 찾는 함수
+    private func findProcessesUsingPort(_ port: Int) -> [Int] {
+        let task = Process()
+        task.launchPath = "/usr/sbin/lsof"
+        task.arguments = ["-ti:\(port)"]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = Pipe()
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            
+            if task.terminationStatus == 0 {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let output = String(data: data, encoding: .utf8) {
+                    let pids = output.trimmingCharacters(in: .whitespacesAndNewlines).components(separatedBy: .newlines)
+                    return pids.compactMap { Int($0) }
+                }
+            }
+        } catch {
+            Logger.error("포트 \(port) 사용 프로세스 찾기 실패: \(error.localizedDescription)")
+        }
+        
+        return []
+    }
+    
+    /// 포트를 사용하는 프로세스들을 강제 종료하는 함수
+    private func killProcessUsingPort(_ port: Int) -> Bool {
+        let pids = findProcessesUsingPort(port)
+        guard !pids.isEmpty else {
+            return false
+        }
+        
+        var successCount = 0
+        var failedPids: [Int] = []
+        
+        for pid in pids {
+            let task = Process()
+            task.launchPath = "/bin/kill"
+            task.arguments = ["-9", "\(pid)"]
+            
+            do {
+                try task.run()
+                task.waitUntilExit()
+                
+                if task.terminationStatus == 0 {
+                    Logger.info("포트 \(port) 사용 프로세스 (PID: \(pid)) 종료 완료")
+                    successCount += 1
+                } else {
+                    Logger.error("포트 \(port) 사용 프로세스 (PID: \(pid)) 종료 실패")
+                    failedPids.append(pid)
+                }
+            } catch {
+                Logger.error("포트 \(port) 사용 프로세스 (PID: \(pid)) 종료 중 오류: \(error.localizedDescription)")
+                failedPids.append(pid)
+            }
+        }
+        
+        if successCount > 0 {
+            Logger.info("포트 \(port) 충돌 해결: \(successCount)개 프로세스 종료 완료")
+            if !failedPids.isEmpty {
+                Logger.warning("포트 \(port) 충돌 해결: \(failedPids.count)개 프로세스 종료 실패 (PID: \(failedPids))")
+            }
+            return true
+        } else {
+            Logger.error("포트 \(port) 충돌 해결 실패: 모든 프로세스 종료 실패")
+            return false
+        }
+    }
+    
+    /// 포트를 사용하는 프로세스를 자동으로 종료하고 포트를 해제하는 함수
+    private func forceReleasePort(_ port: Int) -> Bool {
+        Logger.info("포트 \(port) 자동 해제 시도 중...")
+        
+        // 1. 먼저 우리가 관리하는 프로젝트 중에서 해당 포트를 사용하는 것이 있는지 확인
+        for project in projects {
+            if project.port == port && project.isRunning {
+                if let process = project.process {
+                    // 내부 프로세스인 경우
+                    process.terminate()
+                    project.isRunning = false
+                    project.status = .stopped
+                    project.process = nil
+                    project.addInfoLog("🔄 포트 충돌 해결: 기존 프로세스 종료됨")
+                    Logger.info("포트 \(port) 충돌 해결: 내부 프로세스 종료")
+                    return true
+                } else if project.isExternalProcess, let pid = project.externalProcessId {
+                    // 외부 프로세스인 경우
+                    let task = Process()
+                    task.launchPath = "/bin/kill"
+                    task.arguments = ["-9", "\(pid)"]
+                    
+                    do {
+                        try task.run()
+                        task.waitUntilExit()
+                        project.isRunning = false
+                        project.status = .stopped
+                        project.isExternalProcess = false
+                        project.externalProcessId = nil
+                        project.addInfoLog("🔄 포트 충돌 해결: 외부 프로세스 (PID: \(pid)) 종료됨")
+                        Logger.info("포트 \(port) 충돌 해결: 외부 프로세스 (PID: \(pid)) 종료")
+                        return true
+                    } catch {
+                        Logger.error("외부 프로세스 종료 실패: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+        
+        // 2. 우리가 관리하지 않는 외부 프로세스인 경우
+        if killProcessUsingPort(port) {
+            Logger.info("포트 \(port) 충돌 해결: 외부 프로세스 자동 종료")
+            return true
+        }
+        
+        return false
+    }
+    
+    /// 동일한 포트를 사용하는 대기 중인 프로젝트가 있는지 확인하고 자동 시작
+    private func checkAndStartWaitingProject(for port: Int) {
+        // 동일한 포트를 사용하는 중지된 프로젝트 찾기
+        let waitingProjects = projects.filter { project in
+            project.port == port && 
+            !project.isRunning && 
+            project.status == .stopped &&
+            !project.isExternalProcess
+        }
+        
+        if let waitingProject = waitingProjects.first {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                waitingProject.addInfoLog("🔄 포트 \(port)가 해제되어 자동으로 Metro를 시작합니다.")
+                self.startMetro(for: waitingProject)
+            }
+        }
+    }
+    
     private func isExpoProject(at path: String) -> Bool {
         // 체크 파일 우선 적용
         if let forcedType = readProjectTypeMarker(at: path) {
@@ -1441,7 +1614,7 @@ class MetroManager: ObservableObject {
                         }
                     }
                     
-                    // 8080-8100 범위의 포트만 감지
+                    // Metro 관련 포트 범위 확장 (8080-8100)
                     if port >= 8080 && port <= 8100 {
                         detectedServers.append((port: port, command: command, pid: pid))
                         NSLog("DEBUG: 포트 \(port)에서 \(command) (PID: \(pid)) 감지됨")
@@ -1499,7 +1672,28 @@ class MetroManager: ObservableObject {
     private func upsertExternalProject(port: Int, pid: Int) {
         let info = getProjectInfoFromPID(pid)
         let projectPath = info?.path ?? "/unknown"
-        let projectName = info?.name ?? "Metro Server (포트 \(port))"
+        
+        // 프로젝트 이름 추출 개선
+        var projectName = info?.name ?? ""
+        if projectName.isEmpty {
+            // PID에서 명령어 정보를 가져와서 프로젝트 이름 추출 시도
+            if let commandInfo = getCommandFromPID(pid) {
+                let extractedName = extractProjectNameFromCommand(commandInfo)
+                if !extractedName.isEmpty {
+                    projectName = extractedName
+                } else {
+                    // npx 캐시에서 실행되는 경우 실제 프로젝트 경로 찾기
+                    if let actualPath = findActualProjectPath(for: pid) {
+                        let actualName = URL(fileURLWithPath: actualPath).lastPathComponent
+                        projectName = actualName
+                    } else {
+                        projectName = "Metro Server (포트 \(port))"
+                    }
+                }
+            } else {
+                projectName = "Metro Server (포트 \(port))"
+            }
+        }
         
         // 사용자 설정 우선 확인
         let projectType: ProjectType
@@ -1875,6 +2069,7 @@ class MetroManager: ObservableObject {
     
     deinit {
         stopBackgroundProcessMonitoring()
+        memoryMonitoringTimer?.invalidate()
     }
     
     // MARK: - 프로세스 상태 실시간 동기화
@@ -1993,6 +2188,9 @@ class MetroManager: ObservableObject {
                 project.isRunning = false
                 project.addInfoLog("외부 Metro 프로세스가 성공적으로 종료되었습니다.")
                 Logger.success("외부 Metro 프로세스 종료됨 - \(project.name)")
+                
+                // 동일한 포트를 사용하는 다른 프로젝트가 대기 중인지 확인하고 자동 시작
+                self.checkAndStartWaitingProject(for: project.port)
             }
         } else {
             DispatchQueue.main.async {
@@ -2300,16 +2498,65 @@ class MetroManager: ObservableObject {
     }
     
     private func sendMetroCommand(_ command: String, to project: MetroProject) {
-        guard let process = project.process else {
-            project.addErrorLog("Metro 프로세스가 없습니다.")
+        if project.isExternalProcess {
+            // 외부 프로세스의 경우 HTTP API를 통해 명령 전송
+            sendExternalMetroCommand(command, to: project)
+        } else {
+            // 내부 프로세스의 경우 기존 방식 사용
+            guard let process = project.process else {
+                project.addErrorLog("Metro 프로세스가 없습니다.")
+                return
+            }
+            
+            // Metro 프로세스에 명령 전송
+            if let inputPipe = process.standardInput as? Pipe {
+                let commandData = (command + "\n").data(using: .utf8)
+                inputPipe.fileHandleForWriting.write(commandData ?? Data())
+            }
+        }
+    }
+    
+    // 외부 프로세스에 Metro 명령 전송
+    private func sendExternalMetroCommand(_ command: String, to project: MetroProject) {
+        let url = URL(string: "http://localhost:\(project.port)/reload")!
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // 명령에 따른 URL 변경
+        switch command.lowercased() {
+        case "reload", "r":
+            // reload는 이미 설정됨
+            break
+        case "ios", "i":
+            request.url = URL(string: "http://localhost:\(project.port)/open")!
+        case "android", "a":
+            request.url = URL(string: "http://localhost:\(project.port)/open")!
+        case "dev-menu", "d":
+            request.url = URL(string: "http://localhost:\(project.port)/dev-menu")!
+        case "debug", "j":
+            request.url = URL(string: "http://localhost:\(project.port)/debug")!
+        case "menu", "m":
+            request.url = URL(string: "http://localhost:\(project.port)/menu")!
+        default:
+            project.addWarningLog("외부 프로세스에서 지원하지 않는 명령: \(command)")
             return
         }
         
-        // Metro 프로세스에 명령 전송
-        if let inputPipe = process.standardInput as? Pipe {
-            let commandData = (command + "\n").data(using: .utf8)
-            inputPipe.fileHandleForWriting.write(commandData ?? Data())
-        }
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    project.addErrorLog("외부 Metro 명령 전송 실패: \(error.localizedDescription)")
+                } else if let httpResponse = response as? HTTPURLResponse {
+                    if httpResponse.statusCode == 200 {
+                        project.addInfoLog("외부 Metro 명령 실행됨: \(command)")
+                    } else {
+                        project.addWarningLog("외부 Metro 명령 응답 오류: \(httpResponse.statusCode)")
+                    }
+                }
+            }
+        }.resume()
     }
     
     // MARK: - Node.js 경로 찾기
@@ -2375,6 +2622,30 @@ class MetroManager: ObservableObject {
             task.terminate()
             project.addInfoLog("🧪 외부 로그 스트림 중지")
         }
+    }
+    
+    // PID로 명령어 정보 가져오기
+    private func getCommandFromPID(_ pid: Int) -> String? {
+        let task = Process()
+        task.launchPath = "/bin/ps"
+        task.arguments = ["-p", String(pid), "-o", "command="]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        
+        do {
+            try task.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                let command = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                NSLog("DEBUG: PID \(pid) 명령어: \(command)")
+                return command
+            }
+        } catch {
+            NSLog("DEBUG: PID \(pid) 명령어 가져오기 오류: \(error)")
+        }
+        
+        return nil
     }
     
     // PID로 프로젝트 정보 가져오기
@@ -2464,17 +2735,70 @@ class MetroManager: ObservableObject {
         return nil
     }
     
+    // npx 캐시에서 실행되는 경우 실제 프로젝트 경로 찾기
+    private func findActualProjectPath(for pid: Int) -> String? {
+        NSLog("DEBUG: findActualProjectPath - PID \(pid)에서 실제 프로젝트 경로 찾기 시작")
+        
+        // lsof로 프로세스의 현재 작업 디렉토리 확인
+        let task = Process()
+        task.launchPath = "/usr/bin/lsof"
+        task.arguments = ["-a", "-p", String(pid), "-d", "cwd", "-F", "n"]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        
+        do {
+            try task.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                NSLog("DEBUG: findActualProjectPath - lsof 출력: \(output)")
+                let lines = output.components(separatedBy: .newlines)
+                for line in lines {
+                    if line.hasPrefix("n") {
+                        let path = String(line.dropFirst())
+                        NSLog("DEBUG: findActualProjectPath - 작업 디렉토리: \(path)")
+                        
+                        // npx 캐시 경로가 아닌 실제 프로젝트 경로인지 확인
+                        if !path.contains("/.npm/_npx/") && !path.contains("/node_modules/") {
+                            // package.json이 있는 디렉토리인지 확인
+                            let packageJsonPath = "\(path)/package.json"
+                            if FileManager.default.fileExists(atPath: packageJsonPath) {
+                                NSLog("DEBUG: findActualProjectPath - 실제 프로젝트 경로 발견: \(path)")
+                                return path
+                            } else {
+                                NSLog("DEBUG: findActualProjectPath - package.json 없음: \(packageJsonPath)")
+                            }
+                        } else {
+                            NSLog("DEBUG: findActualProjectPath - npx 캐시 경로 무시: \(path)")
+                        }
+                    }
+                }
+            }
+        } catch {
+            NSLog("DEBUG: findActualProjectPath - lsof 오류: \(error)")
+        }
+        
+        NSLog("DEBUG: findActualProjectPath - 실제 프로젝트 경로를 찾지 못함")
+        return nil
+    }
+    
     // 명령어에서 프로젝트 이름 추출
     private func extractProjectNameFromCommand(_ command: String) -> String {
+        NSLog("DEBUG: extractProjectNameFromCommand - 명령어: \(command)")
+        
         // 명령어에서 프로젝트 경로 추출 시도
         if let projectPath = extractProjectPathFromCommand(command) {
+            NSLog("DEBUG: extractProjectNameFromCommand - 추출된 경로: \(projectPath)")
             // 경로에서 프로젝트 이름 추출
             let components = projectPath.components(separatedBy: "/")
             if let lastComponent = components.last, !lastComponent.isEmpty {
                 // 특수한 경우 처리
                 if lastComponent == "node_modules" && components.count > 1 {
-                    return components[components.count - 2]
+                    let projectName = components[components.count - 2]
+                    NSLog("DEBUG: extractProjectNameFromCommand - node_modules에서 추출: \(projectName)")
+                    return projectName
                 }
+                NSLog("DEBUG: extractProjectNameFromCommand - 경로에서 추출: \(lastComponent)")
                 return lastComponent
             }
         }
@@ -2483,11 +2807,14 @@ class MetroManager: ObservableObject {
         let patterns = [
             "react-native start",
             "expo start",
-            "metro start"
+            "metro start",
+            "npx expo start",
+            "npx react-native start"
         ]
         
         for pattern in patterns {
             if command.contains(pattern) {
+                NSLog("DEBUG: extractProjectNameFromCommand - 패턴 발견: \(pattern)")
                 // 패턴 앞뒤의 텍스트에서 프로젝트 이름 추출 시도
                 if let range = command.range(of: pattern) {
                     let beforePattern = String(command[..<range.lowerBound])
@@ -2498,7 +2825,9 @@ class MetroManager: ObservableObject {
                     let pathComponents = allText.components(separatedBy: "/")
                     for component in pathComponents.reversed() {
                         let trimmed = component.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty && !trimmed.contains("node") && !trimmed.contains("npx") {
+                        if !trimmed.isEmpty && !trimmed.contains("node") && !trimmed.contains("npx") && 
+                           !trimmed.contains("bin") && !trimmed.contains("usr") && !trimmed.contains("local") {
+                            NSLog("DEBUG: extractProjectNameFromCommand - 패턴에서 추출: \(trimmed)")
                             return trimmed
                         }
                     }
@@ -2506,6 +2835,22 @@ class MetroManager: ObservableObject {
             }
         }
         
+        // 추가: 명령어에서 직접 프로젝트 이름 추출 시도
+        let words = command.components(separatedBy: .whitespaces)
+        for word in words {
+            let trimmed = word.trimmingCharacters(in: .whitespacesAndNewlines)
+            // 프로젝트 이름으로 보이는 패턴 찾기 (특수문자 제외, 길이 제한)
+            if trimmed.count > 2 && trimmed.count < 50 && 
+               !trimmed.contains("node") && !trimmed.contains("npx") && 
+               !trimmed.contains("expo") && !trimmed.contains("react-native") &&
+               !trimmed.contains("metro") && !trimmed.contains("start") &&
+               !trimmed.contains("/") && !trimmed.contains("\\") {
+                NSLog("DEBUG: extractProjectNameFromCommand - 단어에서 추출: \(trimmed)")
+                return trimmed
+            }
+        }
+        
+        NSLog("DEBUG: extractProjectNameFromCommand - 추출 실패")
         return ""
     }
     
@@ -2581,4 +2926,54 @@ class MetroManager: ObservableObject {
             Logger.error("체크 파일 쓰기 실패: \(error.localizedDescription)")
         }
     }
+    
+    // MARK: - 로그 메모리 모니터링
+    
+    /// 로그 메모리 모니터링 시작
+    private func startMemoryMonitoring() {
+        memoryMonitoringTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            self?.updateMemoryUsage()
+        }
+    }
+    
+    /// 전체 프로젝트의 로그 메모리 사용량 업데이트
+    private func updateMemoryUsage() {
+        let totalMemory = projects.reduce(0.0) { total, project in
+            total + project.getLogMemoryUsageMB()
+        }
+        
+        DispatchQueue.main.async {
+            self.totalLogMemoryUsageMB = totalMemory
+            
+            // 메모리 사용량이 50MB를 초과하면 경고
+            if totalMemory > 50.0 && !self.showingMemoryWarning {
+                self.showingMemoryWarning = true
+                self.errorMessage = "⚠️ 로그 메모리 사용량이 높습니다 (\(String(format: "%.1f", totalMemory))MB). 로그 정리나 압축을 고려해보세요."
+                self.showingErrorAlert = true
+            } else if totalMemory <= 30.0 {
+                self.showingMemoryWarning = false
+            }
+        }
+    }
+    
+    /// 모든 프로젝트의 로그 강제 정리
+    func cleanupAllLogs() {
+        for project in projects {
+            project.forceLogCleanup()
+        }
+        updateMemoryUsage()
+        errorMessage = "모든 프로젝트의 로그가 정리되었습니다."
+        showingErrorAlert = true
+    }
+    
+    /// 모든 프로젝트의 로그 압축
+    func compressAllLogs() {
+        for project in projects {
+            project.compressLogs()
+        }
+        updateMemoryUsage()
+        errorMessage = "모든 프로젝트의 로그가 압축되었습니다."
+        showingErrorAlert = true
+    }
+    
 }

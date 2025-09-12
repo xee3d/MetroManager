@@ -46,6 +46,11 @@ struct ProjectDetailView: View {
                     .buttonStyle(.bordered)
                     .tint(project.isRunning ? .red : .green)
                     .disabled(project.status == .starting)
+                    .help(project.isRunning ? 
+                          (project.isExternalProcess ? "외부 프로세스를 중지합니다" : "Metro를 중지합니다") :
+                          (!metroManager.isPortAvailable(project.port) ? 
+                           "포트 \(project.port)가 사용 중입니다. 시작하면 기존 프로세스를 자동으로 종료합니다." : 
+                           "Metro를 시작합니다"))
                     
                     Button(action: {
                         metroManager.clearLogs(for: project)
@@ -53,6 +58,24 @@ struct ProjectDetailView: View {
                         Label("로그 삭제", systemImage: "trash")
                     }
                     .buttonStyle(.bordered)
+                    
+                    Button(action: {
+                        project.forceLogCleanup()
+                    }) {
+                        Label("로그 정리", systemImage: "trash.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.orange)
+                    .help("오래된 로그만 정리 (에러 로그 보존)")
+                    
+                    Button(action: {
+                        project.compressLogs()
+                    }) {
+                        Label("로그 압축", systemImage: "arrow.down.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.blue)
+                    .help("중복 로그 압축")
                     
                     if project.isExternalProcess && project.isRunning {
                         Button(action: {
@@ -131,6 +154,27 @@ struct ProjectDetailView: View {
                                         .foregroundColor(.orange)
                                         .help("로그 스트림 연결 안됨")
                                 }
+                            }
+                        }
+                    }
+                    
+                    // 포트 충돌 상태 표시
+                    if !metroManager.isPortAvailable(project.port) && !project.isRunning {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("포트 상태")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            HStack(spacing: 4) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text("포트 충돌")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.orange.opacity(0.2))
+                                    .foregroundColor(.orange)
+                                    .cornerRadius(6)
                             }
                         }
                     }
@@ -325,6 +369,15 @@ struct ProjectDetailView: View {
                 HStack(spacing: 8) {
                     Text("콘솔 출력")
                         .font(.headline)
+                    
+                    // 로그 상태 정보 표시
+                    Text(project.getLogStatus())
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(4)
                     
                     Spacer()
                     

@@ -21,7 +21,19 @@ struct ContentView: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .fixedSize(horizontal: true, vertical: false)
+                    
                     Spacer()
+                    
+                    // 전체 메모리 사용량 표시
+                    if metroManager.totalLogMemoryUsageMB > 0 {
+                        Text("메모리: \(String(format: "%.1f", metroManager.totalLogMemoryUsageMB))MB")
+                            .font(.caption)
+                            .foregroundColor(metroManager.totalLogMemoryUsageMB > 50 ? .red : .secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(metroManager.totalLogMemoryUsageMB > 50 ? Color.red.opacity(0.1) : Color.gray.opacity(0.1))
+                            .cornerRadius(4)
+                    }
                 }
                 .padding([.horizontal, .top])
 
@@ -45,6 +57,24 @@ struct ContentView: View {
                             .foregroundColor(.red)
                     }
                     .help("모든 Metro 서버 종료 및 리스트 정리")
+                    
+                    Button(action: { 
+                        metroManager.cleanupAllLogs()
+                    }) {
+                        Image(systemName: "trash.circle")
+                            .font(.title3)
+                            .foregroundColor(.orange)
+                    }
+                    .help("모든 프로젝트 로그 정리")
+                    
+                    Button(action: { 
+                        metroManager.compressAllLogs()
+                    }) {
+                        Image(systemName: "arrow.down.circle")
+                            .font(.title3)
+                            .foregroundColor(.blue)
+                    }
+                    .help("모든 프로젝트 로그 압축")
                     Button(action: { showingAddProject = true }) {
                         Image(systemName: "plus")
                             .font(.title3)
