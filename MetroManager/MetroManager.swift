@@ -146,6 +146,62 @@ class MetroManager: ObservableObject {
         saveProjects()
     }
     
+    /// 드래그 앤 드롭으로 프로젝트 추가
+    func addProjectFromDrop(_ urls: [URL]) {
+        for url in urls {
+            // 폴더인지 확인
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue else {
+                Logger.warning("드롭된 항목이 폴더가 아닙니다: \(url.path)")
+                continue
+            }
+            
+            let path = url.path
+            let name = url.lastPathComponent
+            
+            // 이미 등록된 경로인지 확인
+            if projects.contains(where: { $0.path == path }) {
+                Logger.warning("이미 등록된 경로입니다: \(path)")
+                continue
+            }
+            
+            // 사용 가능한 포트 찾기
+            let port = findAvailablePort()
+            
+            // 프로젝트 타입 자동 감지
+            let projectType: ProjectType
+            if let userProjectType = getUserProjectType(path: path) {
+                projectType = userProjectType
+            } else {
+                projectType = isExpoProject(at: path) ? .expo : .reactNativeCLI
+            }
+            
+            // 프로젝트 추가
+            let project = MetroProject(name: name, path: path, port: port, projectType: projectType)
+            projects.append(project)
+            writeProjectTypeMarker(at: path, type: projectType)
+            saveProjects()
+            
+            Logger.info("드래그 앤 드롭으로 프로젝트 추가: \(name) (\(path)) - 포트: \(port)")
+        }
+    }
+    
+    /// 사용 가능한 포트 찾기
+    private func findAvailablePort() -> Int {
+        let startPort = 8080
+        let endPort = 8099
+        
+        for port in startPort...endPort {
+            if !projects.contains(where: { $0.port == port }) && isPortAvailable(port) {
+                return port
+            }
+        }
+        
+        // 모든 포트가 사용 중이면 8081 반환 (충돌 시 사용자가 수동으로 변경)
+        return 8081
+    }
+    
     func editProject(project: MetroProject, newName: String, newPath: String, newPort: Int, newType: ProjectType) {
         if let index = projects.firstIndex(where: { $0.id == project.id }) {
             projects[index].name = newName
@@ -165,6 +221,10 @@ class MetroManager: ObservableObject {
             selectedProject = nil
         }
         saveProjects()
+    }
+    
+    func deleteProject(_ project: MetroProject) {
+        removeProject(project)
     }
     
     func startMetro(for project: MetroProject) {
@@ -196,18 +256,33 @@ class MetroManager: ObservableObject {
         
         // 포트가 사용 중인지 확인하고 자동으로 해결 시도
         if !isPortAvailable(project.port) {
-            project.addInfoLog("⚠️ 포트 \(project.port)가 사용 중입니다. 자동 해결을 시도합니다...")
+            project.status = .resolvingPortConflict
+            project.addInfoLog("⚠️ 포트 \(project.port)가 사용 중입니다.")
+            project.addInfoLog("🔍 포트 \(project.port)를 사용하는 프로세스를 찾는 중...")
+            
+            // 포트를 사용하는 프로세스 정보 확인
+            let pids = findProcessesUsingPort(project.port)
+            if !pids.isEmpty {
+                project.addInfoLog("📋 발견된 프로세스: \(pids.map { "PID \($0)" }.joined(separator: ", "))")
+            }
+            
+            project.addInfoLog("🔄 기존 프로세스를 자동으로 종료하고 포트를 해제합니다...")
             
             // 자동으로 포트를 사용하는 프로세스 종료 시도
-            if forceReleasePort(project.port) {
+            if forceReleasePort(project.port, for: project) {
+                project.addInfoLog("⏳ 프로세스 종료 완료. 포트 사용 가능 여부를 확인하는 중...")
+                
                 // 잠시 대기 후 포트 사용 가능 여부 재확인
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     if self.isPortAvailable(project.port) {
-                        project.addInfoLog("✅ 포트 \(project.port) 자동 해제 완료. Metro를 시작합니다.")
+                        project.addInfoLog("✅ 포트 \(project.port) 자동 해제 완료!")
+                        project.addInfoLog("🚀 Metro를 시작합니다...")
+                        project.status = .starting
                         self.continueStartMetro(for: project)
                     } else {
                         project.status = .error
-                        project.addErrorLog("❌ 포트 \(project.port) 자동 해제 실패. 수동으로 해결해주세요.")
+                        project.addErrorLog("❌ 포트 \(project.port) 자동 해제 실패")
+                        project.addErrorLog("💡 수동으로 해결해주세요: lsof -ti:\(project.port) | xargs kill -9")
                         self.errorMessage = "포트 \(project.port) 자동 해제에 실패했습니다. 수동으로 해당 포트를 사용하는 프로세스를 종료해주세요."
                         self.showingErrorAlert = true
                     }
@@ -215,7 +290,8 @@ class MetroManager: ObservableObject {
                 return
             } else {
                 project.status = .error
-                project.addErrorLog("❌ 포트 \(project.port) 자동 해제 실패. 수동으로 해결해주세요.")
+                project.addErrorLog("❌ 포트 \(project.port) 자동 해제 실패")
+                project.addErrorLog("💡 수동 해결 방법: lsof -ti:\(project.port) | xargs kill -9")
                 self.errorMessage = "포트 \(project.port)가 이미 사용 중입니다. 수동으로 해당 포트를 사용하는 프로세스를 종료해주세요."
                 self.showingErrorAlert = true
                 return
@@ -931,34 +1007,6 @@ class MetroManager: ObservableObject {
     }
     
     
-    
-    private func findAvailablePort() -> Int {
-        let usedPorts = Set(projects.map { $0.port })
-        
-        // 기본 포트 중에서 사용되지 않는 포트 찾기
-        for port in defaultPorts {
-            if !usedPorts.contains(port) && isPortAvailable(port) {
-                return port
-            }
-        }
-        
-        // 기본 포트가 모두 사용 중이면 8086부터 찾기
-        for port in 8086...8100 {
-            if !usedPorts.contains(port) && isPortAvailable(port) {
-                return port
-            }
-        }
-        
-        // 모든 포트가 사용 중이면 시스템에서 사용 가능한 포트 찾기
-        for port in 8081...8200 {
-            if !usedPorts.contains(port) && isPortAvailable(port) {
-                return port
-            }
-        }
-        
-        return 8081 // 최후의 수단
-    }
-    
     func isPortAvailable(_ port: Int) -> Bool {
         let sock = socket(AF_INET, SOCK_STREAM, 0)
         guard sock != -1 else { return false }
@@ -1007,16 +1055,23 @@ class MetroManager: ObservableObject {
     }
     
     /// 포트를 사용하는 프로세스들을 강제 종료하는 함수
-    private func killProcessUsingPort(_ port: Int) -> Bool {
+    private func killProcessUsingPort(_ port: Int, for currentProject: MetroProject) -> Bool {
         let pids = findProcessesUsingPort(port)
         guard !pids.isEmpty else {
+            currentProject.addInfoLog("포트 \(port)를 사용하는 프로세스를 찾을 수 없습니다")
+            Logger.info("포트 \(port)를 사용하는 프로세스를 찾을 수 없습니다")
             return false
         }
+        
+        currentProject.addInfoLog("포트 \(port)를 사용하는 \(pids.count)개 프로세스 발견: \(pids.map { "PID \($0)" }.joined(separator: ", "))")
+        Logger.info("포트 \(port)를 사용하는 \(pids.count)개 프로세스 발견: \(pids.map { "PID \($0)" }.joined(separator: ", "))")
         
         var successCount = 0
         var failedPids: [Int] = []
         
         for pid in pids {
+            currentProject.addInfoLog("프로세스 (PID: \(pid)) 종료 시도 중...")
+            Logger.info("프로세스 (PID: \(pid)) 종료 시도 중...")
             let task = Process()
             task.launchPath = "/bin/kill"
             task.arguments = ["-9", "\(pid)"]
@@ -1026,32 +1081,38 @@ class MetroManager: ObservableObject {
                 task.waitUntilExit()
                 
                 if task.terminationStatus == 0 {
-                    Logger.info("포트 \(port) 사용 프로세스 (PID: \(pid)) 종료 완료")
+                    currentProject.addInfoLog("✅ 프로세스 (PID: \(pid)) 종료 완료")
+                    Logger.info("✅ 프로세스 (PID: \(pid)) 종료 완료")
                     successCount += 1
                 } else {
-                    Logger.error("포트 \(port) 사용 프로세스 (PID: \(pid)) 종료 실패")
+                    currentProject.addErrorLog("❌ 프로세스 (PID: \(pid)) 종료 실패 (종료 코드: \(task.terminationStatus))")
+                    Logger.error("❌ 프로세스 (PID: \(pid)) 종료 실패 (종료 코드: \(task.terminationStatus))")
                     failedPids.append(pid)
                 }
             } catch {
-                Logger.error("포트 \(port) 사용 프로세스 (PID: \(pid)) 종료 중 오류: \(error.localizedDescription)")
+                currentProject.addErrorLog("❌ 프로세스 (PID: \(pid)) 종료 중 오류: \(error.localizedDescription)")
+                Logger.error("❌ 프로세스 (PID: \(pid)) 종료 중 오류: \(error.localizedDescription)")
                 failedPids.append(pid)
             }
         }
         
         if successCount > 0 {
+            currentProject.addInfoLog("포트 \(port) 충돌 해결: \(successCount)개 프로세스 종료 완료")
             Logger.info("포트 \(port) 충돌 해결: \(successCount)개 프로세스 종료 완료")
             if !failedPids.isEmpty {
+                currentProject.addWarningLog("포트 \(port) 충돌 해결: \(failedPids.count)개 프로세스 종료 실패 (PID: \(failedPids))")
                 Logger.warning("포트 \(port) 충돌 해결: \(failedPids.count)개 프로세스 종료 실패 (PID: \(failedPids))")
             }
             return true
         } else {
+            currentProject.addErrorLog("포트 \(port) 충돌 해결 실패: 모든 프로세스 종료 실패")
             Logger.error("포트 \(port) 충돌 해결 실패: 모든 프로세스 종료 실패")
             return false
         }
     }
     
     /// 포트를 사용하는 프로세스를 자동으로 종료하고 포트를 해제하는 함수
-    private func forceReleasePort(_ port: Int) -> Bool {
+    private func forceReleasePort(_ port: Int, for currentProject: MetroProject) -> Bool {
         Logger.info("포트 \(port) 자동 해제 시도 중...")
         
         // 1. 먼저 우리가 관리하는 프로젝트 중에서 해당 포트를 사용하는 것이 있는지 확인
@@ -1059,15 +1120,17 @@ class MetroManager: ObservableObject {
             if project.port == port && project.isRunning {
                 if let process = project.process {
                     // 내부 프로세스인 경우
+                    project.addInfoLog("🔄 내부 프로세스 (PID: \(process.processIdentifier)) 종료 중...")
                     process.terminate()
                     project.isRunning = false
                     project.status = .stopped
                     project.process = nil
-                    project.addInfoLog("🔄 포트 충돌 해결: 기존 프로세스 종료됨")
+                    project.addInfoLog("✅ 포트 충돌 해결: 내부 프로세스 종료 완료")
                     Logger.info("포트 \(port) 충돌 해결: 내부 프로세스 종료")
                     return true
                 } else if project.isExternalProcess, let pid = project.externalProcessId {
                     // 외부 프로세스인 경우
+                    project.addInfoLog("🔄 외부 프로세스 (PID: \(pid)) 종료 중...")
                     let task = Process()
                     task.launchPath = "/bin/kill"
                     task.arguments = ["-9", "\(pid)"]
@@ -1079,10 +1142,11 @@ class MetroManager: ObservableObject {
                         project.status = .stopped
                         project.isExternalProcess = false
                         project.externalProcessId = nil
-                        project.addInfoLog("🔄 포트 충돌 해결: 외부 프로세스 (PID: \(pid)) 종료됨")
+                        project.addInfoLog("✅ 포트 충돌 해결: 외부 프로세스 (PID: \(pid)) 종료 완료")
                         Logger.info("포트 \(port) 충돌 해결: 외부 프로세스 (PID: \(pid)) 종료")
                         return true
                     } catch {
+                        project.addErrorLog("❌ 외부 프로세스 (PID: \(pid)) 종료 실패: \(error.localizedDescription)")
                         Logger.error("외부 프로세스 종료 실패: \(error.localizedDescription)")
                     }
                 }
@@ -1090,11 +1154,14 @@ class MetroManager: ObservableObject {
         }
         
         // 2. 우리가 관리하지 않는 외부 프로세스인 경우
-        if killProcessUsingPort(port) {
+        currentProject.addInfoLog("🔍 시스템에서 포트 \(port)를 사용하는 프로세스 검색 중...")
+        if killProcessUsingPort(port, for: currentProject) {
+            currentProject.addInfoLog("✅ 포트 충돌 해결: 시스템 프로세스 자동 종료 완료")
             Logger.info("포트 \(port) 충돌 해결: 외부 프로세스 자동 종료")
             return true
         }
         
+        currentProject.addErrorLog("❌ 포트 \(port)를 사용하는 프로세스를 찾을 수 없거나 종료할 수 없습니다")
         return false
     }
     

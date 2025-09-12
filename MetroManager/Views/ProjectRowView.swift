@@ -87,14 +87,27 @@ struct ProjectRowView: View {
             
             Spacer()
             
-            HStack(spacing: 4) {
-                Capsule()
-                    .fill(project.status.color)
-                    .frame(width: 8, height: 8)
-                Text(project.status.text)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(project.status.color)
+            HStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    Capsule()
+                        .fill(project.status.color)
+                        .frame(width: 8, height: 8)
+                    Text(project.status.text)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(project.status.color)
+                }
+                
+                // 삭제 버튼
+                Button(action: {
+                    metroManager.deleteProject(project)
+                }) {
+                    Image(systemName: "trash")
+                        .foregroundColor(.red)
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .help("프로젝트 삭제")
             }
         }
         .padding(.vertical, 8)

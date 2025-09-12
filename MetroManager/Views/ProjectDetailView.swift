@@ -22,6 +22,7 @@ struct ProjectDetailView: View {
                 Spacer()
             }
             .padding(.horizontal)
+            .padding(.top, 8)
             
             // 제어 패널 - 정렬과 간격 최적화
             VStack(spacing: 10) {
@@ -51,27 +52,12 @@ struct ProjectDetailView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(project.isRunning ? .red : .green)
                     .controlSize(.large)
-                    .disabled(project.status == .starting)
+                    .disabled(project.status == .starting || project.status == .resolvingPortConflict)
                     .help(project.isRunning ? 
                           (project.isExternalProcess ? "외부 프로세스를 중지합니다" : "Metro를 중지합니다") :
                           (!metroManager.isPortAvailable(project.port) ? 
                            "포트 \(project.port)가 사용 중입니다. 시작하면 기존 프로세스를 자동으로 종료합니다." : 
                            "Metro를 시작합니다"))
-                    
-                    if project.isExternalProcess && project.isRunning {
-                        Button(action: {
-                            if metroManager.isAttachingExternalLogs(for: project) {
-                                metroManager.detachExternalLogs(for: project)
-                            } else {
-                                metroManager.attachExternalLogs(for: project)
-                            }
-                        }) {
-                            Label(metroManager.isAttachingExternalLogs(for: project) ? "스트림 중지" : "스트림 연결", systemImage: metroManager.isAttachingExternalLogs(for: project) ? "bolt.slash" : "bolt")
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.purple)
-                        .controlSize(.regular)
-                    }
                     
                     Button(action: {
                         openInTerminal(path: project.path)
@@ -149,9 +135,32 @@ struct ProjectDetailView: View {
                         Text("포트")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text("\(project.port)")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                        HStack(spacing: 4) {
+                            Text("\(project.port)")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            
+                            if project.status == .resolvingPortConflict {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                    .font(.caption)
+                            }
+                        }
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("상태")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(project.status.color)
+                                .frame(width: 8, height: 8)
+                            Text(project.status.text)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundColor(project.status.color)
+                        }
                     }
                     
                     if project.isExternalProcess {
@@ -232,6 +241,32 @@ struct ProjectDetailView: View {
             .background(Color.gray.opacity(0.05))
             .cornerRadius(8)
             .padding(.horizontal)
+            
+            // 포트 충돌 해결 중 안내 메시지
+            if project.status == .resolvingPortConflict {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text("포트 충돌 해결 중")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.orange)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("• 포트 \(project.port)를 사용하는 기존 프로세스를 자동으로 종료합니다")
+                        Text("• 프로세스 종료 후 Metro를 시작합니다")
+                        Text("• 로그를 확인하여 진행 상황을 모니터링하세요")
+                    }
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                }
+                .padding()
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(8)
+                .padding(.horizontal)
+            }
             
             Divider()
             

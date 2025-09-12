@@ -85,8 +85,28 @@ struct ContentView: View {
                 
                 List(displayedProjects, id: \.self, selection: $metroManager.selectedProject) { project in
                     ProjectRowView(project: project, metroManager: metroManager, showingEditProject: $showingEditProject, selectedProjectForEdit: $selectedProjectForEdit)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            // 삭제 버튼
+                            Button(role: .destructive) {
+                                metroManager.deleteProject(project)
+                            } label: {
+                                Label("삭제", systemImage: "trash")
+                            }
+                            
+                            // 편집 버튼
+                            Button {
+                                selectedProjectForEdit = project
+                                showingEditProject = true
+                            } label: {
+                                Label("편집", systemImage: "pencil")
+                            }
+                            .tint(.blue)
+                        }
                 }
-                .listStyle(SidebarListStyle())
+                .listStyle(PlainListStyle())
+                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                    handleDrop(providers: providers)
+                }
 
                 // 하단 아이콘 토글 (라벨 없이 깔끔하게)
                 HStack(spacing: 14) {
@@ -230,6 +250,32 @@ struct ContentView: View {
         default:
             return event // 이벤트 전달
         }
+    }
+    
+    // MARK: - 드래그 앤 드롭 핸들러
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        var urls: [URL] = []
+        let group = DispatchGroup()
+        
+        for provider in providers {
+            group.enter()
+            provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { (item, error) in
+                defer { group.leave() }
+                
+                if let data = item as? Data,
+                   let url = URL(dataRepresentation: data, relativeTo: nil) {
+                    urls.append(url)
+                }
+            }
+        }
+        
+        group.notify(queue: .main) {
+            if !urls.isEmpty {
+                metroManager.addProjectFromDrop(urls)
+            }
+        }
+        
+        return true
     }
     
     private var displayedProjects: [MetroProject] {

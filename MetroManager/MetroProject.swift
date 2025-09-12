@@ -76,6 +76,7 @@ class MetroProject: ObservableObject, Identifiable, Hashable {
         case starting
         case running
         case error
+        case resolvingPortConflict
         
         var color: Color {
             switch self {
@@ -83,6 +84,7 @@ class MetroProject: ObservableObject, Identifiable, Hashable {
             case .starting: return .yellow
             case .running: return .green
             case .error: return .red
+            case .resolvingPortConflict: return .orange
             }
         }
         
@@ -92,6 +94,7 @@ class MetroProject: ObservableObject, Identifiable, Hashable {
             case .starting: return "시작 중..."
             case .running: return "실행 중"
             case .error: return "오류"
+            case .resolvingPortConflict: return "포트 충돌 해결 중..."
             }
         }
     }
