@@ -23,10 +23,10 @@ struct ProjectDetailView: View {
             }
             .padding(.horizontal)
             
-            // 제어 패널 - 세밀하게 조정된 간격과 사이즈
-            VStack(spacing: 8) {
-                // 기본 제어 버튼들
-                HStack(spacing: 8) {
+            // 제어 패널 - 정렬과 간격 최적화
+            VStack(spacing: 10) {
+                // 기본 제어 버튼들 - 정렬 개선
+                HStack(spacing: 10) {
                     Button(action: {
                         if project.isRunning {
                             if project.isExternalProcess {
@@ -70,7 +70,7 @@ struct ProjectDetailView: View {
                         }
                         .buttonStyle(.bordered)
                         .tint(.purple)
-                        .controlSize(.small)
+                        .controlSize(.regular)
                     }
                     
                     Button(action: {
@@ -81,44 +81,50 @@ struct ProjectDetailView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.large)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 
-                // 로그 관리 버튼들 - 더 컴팩트하게
-                HStack(spacing: 6) {
-                    Text("로그:")
-                        .font(.caption2)
+                // 로그 관리 버튼들 - 정렬 개선
+                HStack(spacing: 8) {
+                    Text("로그 관리")
+                        .font(.caption)
                         .foregroundColor(.secondary)
                         .fontWeight(.medium)
+                        .frame(width: 60, alignment: .leading)
                     
-                    Button(action: {
-                        metroManager.clearLogs(for: project)
-                    }) {
-                        Label("삭제", systemImage: "trash")
+                    HStack(spacing: 6) {
+                        Button(action: {
+                            metroManager.clearLogs(for: project)
+                        }) {
+                            Label("삭제", systemImage: "trash")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        
+                        Button(action: {
+                            project.forceLogCleanup()
+                        }) {
+                            Label("정리", systemImage: "trash.circle")
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.orange)
+                        .controlSize(.small)
+                        .help("오래된 로그만 정리 (에러 로그 보존)")
+                        
+                        Button(action: {
+                            project.compressLogs()
+                        }) {
+                            Label("압축", systemImage: "arrow.down.circle")
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.blue)
+                        .controlSize(.small)
+                        .help("중복 로그 압축")
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
                     
-                    Button(action: {
-                        project.forceLogCleanup()
-                    }) {
-                        Label("정리", systemImage: "trash.circle")
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.orange)
-                    .controlSize(.mini)
-                    .help("오래된 로그만 정리 (에러 로그 보존)")
-                    
-                    Button(action: {
-                        project.compressLogs()
-                    }) {
-                        Label("압축", systemImage: "arrow.down.circle")
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.blue)
-                    .controlSize(.mini)
-                    .help("중복 로그 압축")
+                    Spacer()
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 16)
             
             // 자동 해결 도구 및 실행 버튼 제거됨
             
@@ -229,9 +235,9 @@ struct ProjectDetailView: View {
             
             Divider()
             
-            // 핵심 단축키 - 세밀하게 조정된 버튼 사이즈
+            // 핵심 단축키 - 정렬과 간격 최적화
             if project.isRunning {
-                VStack(spacing: 6) {
+                VStack(spacing: 8) {
                     HStack {
                         Text("핵심 단축키")
                             .font(.caption)
@@ -244,10 +250,10 @@ struct ProjectDetailView: View {
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 16)
                     
-                    // 기본 단축키들 - 아이콘과 텍스트로 명확하게
-                    HStack(spacing: 6) {
+                    // 기본 단축키들 - 정렬 개선
+                    HStack(spacing: 8) {
                         Button(action: {
                             metroManager.handleUserCommand("r", for: project)
                         }) {
@@ -310,13 +316,15 @@ struct ProjectDetailView: View {
                             .controlSize(.regular)
                             .help("캐시 정리 (c)")
                         }
+                        
+                        Spacer()
                     }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 16)
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, 8)
                 .background(Color.gray.opacity(0.05))
-                .cornerRadius(4)
-                .padding(.horizontal)
+                .cornerRadius(6)
+                .padding(.horizontal, 16)
             }
             
             // 콘솔 로그
