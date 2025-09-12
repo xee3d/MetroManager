@@ -210,14 +210,14 @@ struct ProjectDetailView: View {
             
             Divider()
             
-            // 단축키 버튼들
+            // 핵심 단축키만 표시
             if project.isRunning {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Metro 단축키")
+                    Text("핵심 단축키")
                         .font(.headline)
                         .padding(.horizontal)
                     
-                    // 기본 단축키들
+                    // 자주 사용하는 핵심 단축키들
                     HStack(spacing: 8) {
                         Button(action: {
                             metroManager.handleUserCommand("r", for: project)
@@ -250,26 +250,10 @@ struct ProjectDetailView: View {
                         }
                         .buttonStyle(.bordered)
                         .tint(.orange)
-                        
-                        Button(action: {
-                            metroManager.handleUserCommand("j", for: project)
-                        }) {
-                            Label("디버그 (j)", systemImage: "ladybug")
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.purple)
-                        
-                        Button(action: {
-                            metroManager.handleUserCommand("m", for: project)
-                        }) {
-                            Label("메뉴 (m)", systemImage: "list.bullet")
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.gray)
                     }
                     .padding(.horizontal)
                     
-                    // Expo 전용 단축키들
+                    // Expo 전용 핵심 단축키
                     if project.projectType == .expo {
                         HStack(spacing: 8) {
                             Button(action: {
@@ -287,76 +271,15 @@ struct ProjectDetailView: View {
                             }
                             .buttonStyle(.bordered)
                             .tint(.red)
-                            
-                            Button(action: {
-                                metroManager.handleUserCommand("s", for: project)
-                            }) {
-                                Label("전송 (s)", systemImage: "paperplane")
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.green)
-                            
-                            Button(action: {
-                                metroManager.handleUserCommand("t", for: project)
-                            }) {
-                                Label("터널 (t)", systemImage: "network")
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.purple)
-                            
-                            Button(action: {
-                                metroManager.handleUserCommand("l", for: project)
-                            }) {
-                                Label("LAN (l)", systemImage: "wifi")
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.orange)
-                            
-                            Button(action: {
-                                metroManager.handleUserCommand("o", for: project)
-                            }) {
-                                Label("Localhost (o)", systemImage: "house")
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.gray)
-                        }
-                        .padding(.horizontal)
-                        
-                        HStack(spacing: 8) {
-                            Button(action: {
-                                metroManager.handleUserCommand("u", for: project)
-                            }) {
-                                Label("URL (u)", systemImage: "link")
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.blue)
-                            
-                            Button(action: {
-                                metroManager.handleUserCommand("h", for: project)
-                            }) {
-                                Label("도움말 (h)", systemImage: "questionmark.circle")
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.gray)
-                            
-                            Button(action: {
-                                metroManager.handleUserCommand("v", for: project)
-                            }) {
-                                Label("버전 (v)", systemImage: "info.circle")
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.gray)
-                            
-                            Button(action: {
-                                metroManager.handleUserCommand("q", for: project)
-                            }) {
-                                Label("종료 (q)", systemImage: "xmark.circle")
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.red)
                         }
                         .padding(.horizontal)
                     }
+                    
+                    // 추가 단축키는 키보드로 사용 가능하다는 안내
+                    Text("💡 더 많은 단축키는 키보드로 직접 입력하세요 (j, m, s, t, l, o, u, h, v, q)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal)
                 }
                 .padding(.vertical, 8)
                 .background(Color.gray.opacity(0.05))
