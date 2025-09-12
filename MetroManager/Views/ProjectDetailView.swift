@@ -50,7 +50,7 @@ struct ProjectDetailView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(project.isRunning ? .red : .green)
-                    .controlSize(.regular)
+                    .controlSize(.large)
                     .disabled(project.status == .starting)
                     .help(project.isRunning ? 
                           (project.isExternalProcess ? "외부 프로세스를 중지합니다" : "Metro를 중지합니다") :
@@ -79,7 +79,7 @@ struct ProjectDetailView: View {
                         Label("터미널", systemImage: "terminal")
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .controlSize(.large)
                 }
                 
                 // 로그 관리 버튼들 - 더 컴팩트하게
@@ -255,7 +255,7 @@ struct ProjectDetailView: View {
                         }
                         .buttonStyle(.bordered)
                         .tint(.blue)
-                        .controlSize(.small)
+                        .controlSize(.regular)
                         .help("리로드 (r)")
                         
                         Button(action: {
@@ -265,7 +265,7 @@ struct ProjectDetailView: View {
                         }
                         .buttonStyle(.bordered)
                         .tint(.blue)
-                        .controlSize(.small)
+                        .controlSize(.regular)
                         .help("iOS 시뮬레이터 (i)")
                         
                         Button(action: {
@@ -275,7 +275,7 @@ struct ProjectDetailView: View {
                         }
                         .buttonStyle(.bordered)
                         .tint(.green)
-                        .controlSize(.small)
+                        .controlSize(.regular)
                         .help("Android 에뮬레이터 (a)")
                         
                         Button(action: {
@@ -285,7 +285,7 @@ struct ProjectDetailView: View {
                         }
                         .buttonStyle(.bordered)
                         .tint(.orange)
-                        .controlSize(.small)
+                        .controlSize(.regular)
                         .help("개발자 메뉴 (d)")
                         
                         // Expo 전용 단축키
@@ -297,7 +297,7 @@ struct ProjectDetailView: View {
                             }
                             .buttonStyle(.bordered)
                             .tint(.blue)
-                            .controlSize(.small)
+                            .controlSize(.regular)
                             .help("웹 (w)")
                             
                             Button(action: {
@@ -307,7 +307,7 @@ struct ProjectDetailView: View {
                             }
                             .buttonStyle(.bordered)
                             .tint(.red)
-                            .controlSize(.small)
+                            .controlSize(.regular)
                             .help("캐시 정리 (c)")
                         }
                     }
