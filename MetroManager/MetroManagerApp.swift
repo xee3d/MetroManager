@@ -11,6 +11,7 @@ struct MetroManagerApp: App {
                 .frame(minWidth: 800, minHeight: 600)
         }
         .windowResizability(.contentSize)
+        .defaultPosition(.center)
     }
 }
 
@@ -18,17 +19,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var singleInstanceLock: FileHandle?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // 단일 인스턴스 체크
-        if !checkSingleInstance() {
-            NSApplication.shared.terminate(nil)
-            return
-        }
-        
-        // 앱이 이미 실행 중일 때 기존 창을 앞으로 가져오기
-        if let existingWindow = NSApplication.shared.windows.first {
-            existingWindow.makeKeyAndOrderFront(nil)
+        // 앱 활성화 및 창 표시 강제
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        // 지연 후 창 표시 강제
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            for window in NSApplication.shared.windows {
+                window.makeKeyAndOrderFront(nil)
+                window.center()
+            }
             NSApplication.shared.activate(ignoringOtherApps: true)
         }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return true
     }
     
     func applicationWillTerminate(_ notification: Notification) {
